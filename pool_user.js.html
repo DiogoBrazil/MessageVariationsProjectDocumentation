@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: pool_user.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: pool_user.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>//TEAM BRAZIL
+const crypto = require("crypto");
+/**
+ * Repository pool
+ */
+/**
+ * variable that stores all the users that have ever interacted with the platform
+ */
+let GLOBAL_POOL = [];
+
+/**
+ * Saves the user data in the global_pool array.
+ * @param {object} userEntity - Created object that contains information  the user's
+ * @param {Array} global_pool - Array that stores user data
+ */
+function saveUser(userEntity, global_pool = GLOBAL_POOL) {
+    global_pool.push(userEntity)
+}
+
+/**
+ * Searches for the user in the array GLOBAL_POOL using the ID as parameter.
+ * @param {String} userId - identification of the user who interacts with the flow
+ * @param {Array} global_pool - Array that stores user data
+ * @returns {object}
+ */
+function findUserById(userId, global_pool = GLOBAL_POOL) {
+    return global_pool.find((userEntity) => userEntity.userId == userId);
+}
+
+/**
+ * It replaces the previous data, with new data sent by the user.
+ * @param {String} id - identification of the user who interacts with the flow
+ * @param {object} userEntity - Created object that contains information the user's
+ * @param {Array} global_pool - Array that stores user data
+ */
+function updateUserById(id, userEntity, global_pool = GLOBAL_POOL) {
+    const index = global_pool.findIndex((userEntity) => userEntity.userId == id);
+    global_pool[index] = userEntity;
+}
+/**
+ * Entities
+ */
+
+/**
+ * Class representing a flow
+ * @class
+ */
+class FlowEntity {
+
+    /**
+     * @constructor
+     * @param {String} flowId - identification of the flow that the user interacted
+     * @param {Array} sentMessagesArray - Array that stores the messages that were sent to the user
+     */
+    constructor(flowId, sentMessagesArray) {
+        if (!flowId || !sentMessagesArray) {
+            throw new Error("the flowId or sentMessageArray is necessary");
+        }
+
+        this.flowId = String(flowId);
+        this.sentMessages = sentMessagesArray;
+    }
+
+}
+
+/**
+ * Class representing a user
+ * @class
+ */
+class UserEntity {
+
+    /**
+     * @constructor
+     * @param {String} userId - identification of the user who interacts with the flow
+     * @param {Array&lt;FlowEntity>} flowsArray - Array that stores the streams that the user interacted with
+     */
+    constructor(userId, flowsArray) {
+        if (!userId) {
+            throw new Error("the userId is necessary");
+        }
+
+        // eslint-disable-next-line
+        if (!flowsArray instanceof Array) {
+            throw new Error("the flowArray must be an array type");
+        }
+        this.userId = userId;
+        this.flows = flowsArray
+    }
+
+}
+
+
+/**
+ * Model or Service
+ */
+
+/**
+ * main function or entry point
+ * @param {String} userId - identification of the user who interacts with the flow
+ * @param {object} flow - flow object saved in the database
+ * @returns {Array}
+ */
+function mainMessageVariationFunction(userId, flow) {
+    const userExists = userExistsInThePool(userId);
+    if (userExists) {
+        return selectAMessage(userId, flow);
+
+    } else {
+        addFlowsToUserPool(userId, flow);
+        return selectAMessage(userId, flow);
+    }
+}
+
+/**
+ * checks whether the user has already had contact with the platform
+ * @param {String} userId - identification of the user who interacts with the flow
+ * @returns {Boolean}
+ */
+function userExistsInThePool(userId) {
+    const userHasFlows = findUserById(userId);
+    if (userHasFlows) {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * General code logic. Here is where the variation of the message is selected
+ * @param {String} userId - identification of the user who interacts with the flow
+ * @param {object} flow - flow object saved in the database
+ * @returns {Array}
+ */
+function selectAMessage(userId, flow) {
+    const alternativeReplies = flow.answer;
+
+    const size = alternativeReplies.length - 1;
+
+    const userEntity = findUserById(userId);
+
+    let foundFlow = userEntity.flows.find((flowEntity) => flowEntity.flowId == String(flow._id));
+
+    if (!foundFlow) {
+        const newFlowEntity = new FlowEntity(String(flow._id), []);
+        userEntity.flows.push(newFlowEntity);
+
+        foundFlow = newFlowEntity;
+    }
+
+    function internalSelectMessages() {
+        let validResponses = [];
+        let auxArray = [];
+        for (let i = 0; i &lt;= size; i++) {
+            if (!foundFlow.sentMessages.includes(alternativeReplies[i].message.text)) {
+                auxArray.push(alternativeReplies[i].message.text);
+            }
+
+            for (let alternativeAnswer of alternativeReplies[i].message.variation) {
+                if (!foundFlow.sentMessages.includes(alternativeAnswer)) {
+                    auxArray.push(alternativeAnswer);
+                }
+            }
+
+            if (auxArray.length == 0) {
+                return null;
+            }
+
+            const random = crypto.randomInt(auxArray.length);
+
+            const reponseMessage = auxArray[random];
+
+            validResponses.push(reponseMessage);
+            auxArray = [];
+        }
+
+        return validResponses;
+    }
+
+    const indexFlowEntity = userEntity.flows.findIndex((flowEntity) => flowEntity.flowId == String(flow._id));
+
+    let validResponses = internalSelectMessages();
+    if (validResponses == null) {
+        userEntity.flows[indexFlowEntity].sentMessages = [];
+        validResponses = internalSelectMessages();
+    }
+
+    for (let response of validResponses) {
+        userEntity.flows[indexFlowEntity].sentMessages.push(response);
+    }
+
+    updateUserById(userId, userEntity);
+
+    return validResponses;
+}
+
+/**
+ * adds user to the pool when he had no contact with the platform
+ * @param {String} userId - identification of the user who interacts with the flow
+ * @param {object} flow - flow object saved in the database
+ */
+function addFlowsToUserPool(userId, flow) {
+    let flowsArray = [];
+    const flowEntity = new FlowEntity(String(flow._id), []);
+    flowsArray.push(flowEntity);
+
+    const userPool = new UserEntity(userId, flowsArray);
+    saveUser(userPool);
+}
+
+module.exports = {
+    mainMessageVariationFunction,
+    FlowEntity,
+    UserEntity,
+    findUserById,
+    updateUserById,
+    saveUser
+}
+//TEAM BRAZIL</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="FlowEntity.html">FlowEntity</a></li><li><a href="UserEntity.html">UserEntity</a></li></ul><h3>Global</h3><ul><li><a href="global.html#addFlowsToUserPool">addFlowsToUserPool</a></li><li><a href="global.html#findUserById">findUserById</a></li><li><a href="global.html#GLOBAL_POOL">GLOBAL_POOL</a></li><li><a href="global.html#mainMessageVariationFunction">mainMessageVariationFunction</a></li><li><a href="global.html#saveUser">saveUser</a></li><li><a href="global.html#selectAMessage">selectAMessage</a></li><li><a href="global.html#updateUserById">updateUserById</a></li><li><a href="global.html#userExistsInThePool">userExistsInThePool</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Developed by Team Brazil - Company Quanyx Soft House
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
